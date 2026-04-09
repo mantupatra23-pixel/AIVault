@@ -24,7 +24,7 @@ def add_tool(name: str, cat: str, url: str):
     # AI se review likhwana
     prompt = f"Write a professional 300-word SEO review for '{name}' in '{cat}' category for AIVault."
     chat = groq_client.chat.completions.create(
-        model="llama3-70b-8192",
+        model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}]
     )
     review = chat.choices[0].message.content
