@@ -1,0 +1,4 @@
+groq
+supabase
+fastapi
+uvicorn
