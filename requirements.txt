@@ -1,4 +1,6 @@
-groq
-supabase
 fastapi
 uvicorn
+supabase
+groq
+feedparser
+requests
