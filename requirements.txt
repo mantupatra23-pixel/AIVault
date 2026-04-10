@@ -4,3 +4,4 @@ supabase
 groq
 feedparser
 requests
+python-multipart
