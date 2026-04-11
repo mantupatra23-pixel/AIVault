@@ -13,8 +13,8 @@ app = FastAPI()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") # Optional
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")     # Optional
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 client = groq.Client(api_key=GROQ_API_KEY)
@@ -24,44 +24,57 @@ def create_slug(name):
     slug = re.sub(r"[^\w\s-]", "", name).strip().lower()
     return re.sub(r"[-\s]+", "-", slug)
 
+def get_logo_url(domain):
+    """Smart Image Fallback: Clearbit se try karo, nahi toh Google Favicon"""
+    clearbit_url = f"https://logo.clearbit.com/{domain}"
+    try:
+        response = requests.get(clearbit_url, timeout=5)
+        if response.status_code == 200:
+            return clearbit_url
+    except:
+        pass
+    # Fallback to Google S2 Favicon Service
+    return f"https://www.google.com/s2/favicons?domain={domain}&sz=128"
+
 def send_telegram_update(message):
-    """Naye tool ki khabar seedha aapke phone par"""
     if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message})
+        try:
+            requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"})
+        except:
+            print("Telegram Notify Failed")
 
 def get_youtube_link(tool_name):
-    """Automatic YouTube tutorial search link generator"""
     query = f"{tool_name} AI tutorial hindi"
     return f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}"
 
-# --- 3. AI ENGINE (Deep Research & SEO) ---
+# --- 3. AI ENGINE (Model: Llama 3.3 70B + SEO Intelligence) ---
 def generate_master_review(tool_name, tool_url):
     prompt = f"""
-    Act as a Senior AI Tech Journalist. Analyze '{tool_name}' (URL: {tool_url}).
-    Generate a full SEO review. 
+    Act as a Senior AI Tech Journalist & SEO Expert. Analyze '{tool_name}' from {tool_url}.
     
-    Format:
-    CATEGORY: [Chatbot/Image Gen/Video Gen/Coding/Productivity]
-    PRICING: [Free/Freemium/Paid]
-    
+    Format Strictly:
+    CATEGORY: [One of: Chatbot, Image Gen, Video Gen, Coding, Productivity, Marketing]
+    PRICING: [Free, Freemium, or Paid]
+    SEO_META: [Write a catchy 150-character meta description for Google Search]
+
     ## CONTENT ##
-    [Write 3 professional paragraphs. Mention other AI tools like ChatGPT or Midjourney for internal linking context if relevant.]
-    
+    [Write 3 professional paragraphs. Mention specific use cases for creators.]
+
     ## Key Features
     * [List 5 technical features]
-    
+
     ## Pros & Cons
     Pros: [List 3] | Cons: [List 3]
-    
+
     ## Mantu's Take (Hinglish)
-    [Write 2 lines in Hinglish explaining the real value of this tool for Indians.]
+    [Write 2 lines in Hinglish explaining why this is a must-use tool.]
     """
     try:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.5
+            temperature=0.6
         )
         return response.choices[0].message.content
     except Exception as e:
@@ -70,11 +83,10 @@ def generate_master_review(tool_name, tool_url):
 
 # --- 4. THE AUTONOMOUS WORKFLOW ---
 def process_vault_automation(manual_list=None):
-    # Discovery Logic: Internet se naye tools dhoondhna
     if not manual_list:
-        print("🌐 Discovery Mode: Scanning Product Hunt & RSS...")
+        print("🌐 Discovery Mode: Scanning Product Hunt Feed...")
         feed = feedparser.parse("https://www.producthunt.com/feed")
-        tools = [{"name": e.title, "url": e.link} for e in feed.entries if "ai" in e.title.lower()][:10]
+        tools = [{"name": e.title, "url": e.link} for e in feed.entries][:10]
     else:
         tools = manual_list
 
@@ -82,63 +94,58 @@ def process_vault_automation(manual_list=None):
         name = tool["name"]
         slug = create_slug(name)
         
-        # 1. Duplicate Check
+        # Check if already exists to save Groq API credits
         check = supabase.table("ai_tools").select("id").eq("slug", slug).execute()
         if check.data:
+            print(f"⏩ Skipping {name}: Already in Vault")
             continue
-            
-        print(f"🚀 Processing: {name}")
+
+        print(f"🚀 Analyzing & SEO Optimizing: {name}")
         output = generate_master_review(name, tool["url"])
-        
+
         if output and "## CONTENT ##" in output:
             try:
-                # 2. Extract AI Data
-                parts = output.split("## CONTENT ##")
-                header = parts[0]
-                content = parts[1].strip()
-                
-                cat = re.search(r"CATEGORY:\s*(.*)", header).group(1).strip() if "CATEGORY" in header else "AI Tool"
-                price = re.search(r"PRICING:\s*(.*)", header).group(1).strip() if "PRICING" in header else "Free"
-                
-                # 3. Smart Metadata
-                domain = tool["url"].split("//")[-1].split("/")[0]
-                logo = f"https://logo.clearbit.com/{domain}"
-                yt_link = get_youtube_link(name)
+                header = output.split("## CONTENT ##")[0]
+                content = output.split("## CONTENT ##")[1].strip()
 
-                # 4. Save to Supabase
-                supabase.table("ai_tools").insert({
+                # Regex Extraction for Metadata
+                cat = re.search(r"CATEGORY:\s*(.*)", header).group(1).strip()
+                price = re.search(r"PRICING:\s*(.*)", header).group(1).strip()
+                meta = re.search(r"SEO_META:\s*(.*)", header).group(1).strip()
+
+                domain = tool["url"].split("//")[-1].split("/")[0]
+                
+                data = {
                     "name": name,
                     "slug": slug,
                     "category": cat,
                     "description": content,
+                    "meta_description": meta, # NEW: For Google Ranking
                     "website_url": tool["url"],
-                    "image_url": logo,
-                    "pricing": price, # Make sure to add this column in Supabase
-                    "youtube_url": yt_link # Make sure to add this column in Supabase
-                }).execute()
-                
-                # 5. Notify Owner
-                send_telegram_update(f"✅ NEW TOOL ADDED!\nName: {name}\nCategory: {cat}\nPrice: {price}\nCheck: aivault.vercel.app/tool/{slug}")
+                    "image_url": get_logo_url(domain), # NEW: Smart Fallback
+                    "pricing": price,
+                    "youtube_url": get_youtube_link(name)
+                }
+
+                # UPSERT Data
+                supabase.table("ai_tools").upsert(data, on_conflict="slug").execute()
+
+                # Notify via Telegram (Auto-Social Posting)
+                tg_msg = f"<b>🚀 NEW AI TOOL VAULTED!</b>\n\n<b>Name:</b> {name}\n<b>Price:</b> {price}\n<b>SEO:</b> {meta}\n\n🔗 <a href='https://ai-vault-frontend-blue.vercel.app/tool/{slug}'>Check Full Analysis</a>"
+                send_telegram_update(tg_msg)
                 
                 print(f"✨ Successfully vaulted: {name}")
-                time.sleep(15) # Stay safe from rate limits
-                
+                time.sleep(10) # Safety Delay
+
             except Exception as e:
                 print(f"❌ Execution Error for {name}: {e}")
 
 # --- 5. API ENDPOINTS ---
 @app.get("/")
 def health():
-    return {"status": "AIVault Engine Online", "mode": "Autonomous", "version": "3.0"}
+    return {"status": "AIVault Engine Online", "mode": "SEO-Optimized"}
 
 @app.get("/auto-pilot")
 def start_auto(background_tasks: BackgroundTasks):
-    """Har din naye tools khud dhoondhne ke liye"""
     background_tasks.add_task(process_vault_automation)
-    return {"message": "AI Vault Bot is now discovering new tools..."}
-
-@app.post("/add-bulk")
-def add_bulk(background_tasks: BackgroundTasks, tools: list):
-    """Apni custom list bhejkar process karne ke liye"""
-    background_tasks.add_task(process_vault_automation, tools)
-    return {"message": "Bulk processing started."}
+    return {"message": "AIVault SEO Bot started discovering tools..."}
